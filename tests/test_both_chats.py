@@ -14,12 +14,26 @@ class BothChats(unittest.TestCase):
         self.assertEqual(requested,['chatgpt','claude']);self.assertEqual(rounds,[])
         s.tool_result('ask_leader',{'provider':'claude','answer':'Second complete plan from Claude.'})
         self.assertEqual(rounds,[True]);self.assertFalse(s.awaiting_plan)
+        self.assertTrue(s.automatic_plan_complete)
+        self.assertNotIn('ask_leader',[t['function']['name'] for t in s.available_tools()])
         self.assertEqual(set(s.leader_results),{'chatgpt','claude'})
         self.assertIn('First complete plan',s.leader_inbox.toPlainText());self.assertIn('Second complete plan',s.leader_inbox.toPlainText())
         self.assertNotIn('complete plan',s.transcript.toPlainText())
         self.assertEqual(len([m for m in s.turn_messages if m['role']=='tool']),2)
         s.render();self.assertIn('Second complete plan',s.leader_inbox.toPlainText());self.assertNotIn('complete plan',s.transcript.toPlainText())
         s.turn_running=False
+    def test_consultation_cap_stops_before_starting_process(self):
+        s=self.s;s.turn_running=True;s.leader_consultations=4
+        results=[];s.tool_result=lambda name,result:results.append(result)
+        s.call_leader('ask_leader',{'provider':'chatgpt','question':'Review this task'})
+        self.assertIn('limit',results[0]['error']);self.assertIsNone(s.leader_process)
+        s.turn_running=False
+    def test_repeat_plan_request_does_not_send_another_desktop_message(self):
+        s=self.s;s.turn_running=True;s.cancelled=False;s.automatic_plan_complete=True
+        s.pending_tools=[{'function':{'name':'ask_leader','arguments':{'provider':'chatgpt','question':'Repeat this plan'}}}]
+        results=[];calls=[];s.tool_result=lambda name,result:results.append(result);s.call_leader=lambda *args:calls.append(args)
+        s.execute_next_tool()
+        self.assertEqual(calls,[]);self.assertIn('already collected',results[0]['error']);s.turn_running=False
     def test_manual_copy_recovery_uses_selected_provider(self):
         s=self.s;s.turn_running=True;s.cancelled=False;s.waiting_for_leader=True;s.plan_provider='claude'
         received=[];s.tool_result=lambda name,result:received.append(result)
