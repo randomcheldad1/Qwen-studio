@@ -43,7 +43,7 @@ The private stdio server exposes guarded project file tools and installed-Qwen m
 
 ## Experimental / unavailable features
 
-Desktop leader automation is experimental: automatic copied-reply retrieval has not passed a complete live test. Both chats can be queued, and an explicit Use copied reply action provides manual recovery into a hidden inbox. Window detection and unit tests do not prove automated chat access. Do not rely on it unattended.
+Desktop leader automation remains experimental across app versions, but a real desktop-only end-to-end test passed on one Ubuntu installation: both ChatGPT and Claude replied, the app collected both plans into its hidden inbox, and local Qwen used both. Both chats can be queued, and an explicit Use copied reply action provides manual recovery into a hidden inbox. Window detection and unit tests do not prove automated chat access. Do not rely on it unattended.
 
 Account-specific website deployment is intentionally not included. Hosting buttons report that no account is configured. Use manual SFTP with your own server or implement a reviewed publishing adapter. The example workspace is not a live website. The original user's site, publisher IDs, browser/cookie experiments, credentials, histories and generated assets are excluded. Theme Builder dependencies/assets are not bundled; the optional button may report unavailable.
 
@@ -61,3 +61,19 @@ Other focused file/chat tests are included. The project is alpha; a historical c
 ## License
 
 MIT for this application code. Third-party dependencies retain their own licenses; dependencies are installed separately and are not vendored in this source package.
+
+## Desktop leader setup update
+
+Enable Use chat leaders and select Both chats. The app requests a plan from each existing desktop chat before local execution. Keep the target app active during sending/copying; focus changes stop safely. Account-client/API fallback is not used.
+
+The bridge retains native New Chat input focus when the visual model cannot find the composer. Task boundaries are placed after the question to avoid contradictory response instructions. It tries the Copy control, then a bounded fresh-chat document copy; only one exact unique task-marked answer block is accepted. All other copied content is discarded. Screenshots stay in memory and go only to local Ollama.
+
+The actual combined live test reached BOTH_LEADERS_CONNECTED ChatGPT Claude with both plans hidden. That run exposed redundant follow-up consultations and nonfatal focus/limit errors. The final guard removes/refuses repeated initial-plan calls after collection; 11 focused checks passed, but the whole live sequence was not repeated after that guard. A new user message can request another plan. Manual copied-reply recovery remains available.
+
+The live test is opt-in and uses your actual signed-in desktop chats/account usage:
+
+```sh
+.venv/bin/python tests/live_both_desktop_chats.py /tmp/qwen-leader-test-report.json
+```
+
+Bridge configuration follows the app data directory through QWEN_STUDIO_DATA, so disabling desktop control applies to the same profile. No private production account settings or chat histories are included.
