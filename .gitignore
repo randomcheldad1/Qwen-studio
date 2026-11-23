@@ -1,0 +1,16 @@
+.venv/
+.vendor/
+__pycache__/
+*.pyc
+generated/
+private/
+**/private/
+node_modules/
+.env
+.env.*
+*.pem
+*.key
+*.sqlite*
+*.db
+work/
+outputs/
