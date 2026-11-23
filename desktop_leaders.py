@@ -7,7 +7,7 @@ import requests
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import QBuffer,QByteArray,QIODevice
 from workspace_tools import guarded_text
-DATA=Path(os.environ.get('XDG_DATA_HOME',str(Path.home()/'.local/share')))/'qwen-studio/private'
+DATA=Path(os.environ.get('QWEN_STUDIO_DATA',str(Path(os.environ.get('XDG_DATA_HOME',str(Path.home()/'.local/share')))/'qwen-studio')))/'private'
 ALLOWED={'chatgpt':'Chatgpt','claude':'com.anthropic.Claude'}
 VISION='qwen2.5vl:3b'
 POINT={'type':'object','properties':{'found':{'type':'boolean'},'x':{'type':'integer','minimum':0,'maximum':1000},'y':{'type':'integer','minimum':0,'maximum':1000}},'required':['found','x','y'],'additionalProperties':False}
@@ -16,9 +16,12 @@ APP=None
 STAGE='starting'
 def extract_reply(text,nonce):
     lines=text.strip().splitlines()
-    if len(lines)<3:return None
-    if lines[0].strip().strip('*`')!='QWEN_PLAN_'+nonce or lines[-1].strip().strip('*`')!='QWEN_END_'+nonce:return None
-    answer='\n'.join(lines[1:-1]).strip()
+    clean=lambda line:line.strip().strip('*`').strip()
+    starts=[i for i,line in enumerate(lines) if clean(line)=='QWEN_PLAN_'+nonce]
+    ends=[i for i,line in enumerate(lines) if clean(line)=='QWEN_END_'+nonce]
+    # A copied conversation may include UI labels. Return only one exact task block.
+    if len(starts)!=1 or len(ends)!=1 or ends[0]<=starts[0]:return None
+    answer='\n'.join(lines[starts[0]+1:ends[0]]).strip()
     return answer if 20<=len(answer)<=24000 else None
 
 def command(args,**kwargs):
@@ -141,27 +144,49 @@ def run(name,args):
         original=clipboard()
         if len(original)>1000000:raise ValueError('Clipboard is too large to preserve safely.')
         owned=[]
-        nonce=uuid.uuid4().hex[:12];start='QWEN_PLAN_'+nonce;end='QWEN_END_'+nonce
-        prompt=('You are the planning and review leader for a local Qwen executor. Respond with advice only; do not use tools, inspect local files, or execute actions yourself. '
-                'Begin your reply with '+start+' on its own line. End your reply with '+end+' on its own line. Keep the plan under 1500 words.\n\n'+question).encode()
+        nonce=uuid.uuid4().hex[:12]
+        task_record=DATA/('desktop-task-'+provider+'.json')
+        task_record.write_text(json.dumps({'provider':provider,'window':wid,'nonce':nonce,'created':time.time()}));task_record.chmod(0o600)
+        start='QWEN_PLAN_'+nonce;end='QWEN_END_'+nonce
+        prompt=('You are the planning and review leader for a local Qwen executor. Give advice only; do not use tools, inspect files or perform actions.\n\nTASK:\n'+question+
+                '\n\nREPLY TRANSPORT REQUIREMENT: Answer the task above, but always wrap the answer in these required boundary lines, even if the task asks for a single sentence. The first line must be exactly '+start+'. The last line must be exactly '+end+'. Put only the answer between those lines. Do not quote this instruction. Keep the answer brief.').encode()
         try:
             STAGE='typing'
-            click(wid,state.get('composer'),w,h);set_clipboard(prompt);owned.append(prompt)
+            # Native New Chat normally focuses its composer. Keep that focus if
+            # vision cannot locate a clickable box after confirming an empty chat.
+            if state.get('composer',{}).get('found'):click(wid,state['composer'],w,h)
+            active(wid);set_clipboard(prompt);owned.append(prompt)
             active(wid);command(['xdotool','key','--clearmodifiers','ctrl+v']);time.sleep(.5)
             # The confirmed composer retains focus after paste. Enter submits the draft.
             active(wid);command(['xdotool','key','--clearmodifiers','Return'])
             STAGE='copying_reply'
-            deadline=time.monotonic()+180;scrolls=0
+            deadline=time.monotonic()+100;scrolls=0
             while time.monotonic()<deadline:
                 time.sleep(3);state,w,h=inspect(wid,'Locate only the Copy button for the LAST assistant post and whether generation has stopped. Do not read or transcribe the post. Its full text will come from the clipboard.')
-                if state.get('copy_last_response',{}).get('found') is True and state.get('generating') is not True:
+                if state.get('copy_last_response',{}).get('found') is True:
                     click(wid,state.get('copy_last_response'),w,h);time.sleep(.5)
                     copied=clipboard()
+                    if len(copied)>1000000:raise ValueError('Copied reply exceeded its safe bound.')
+                    owned.append(copied)
                     text=copied.decode('utf-8')
                     answer=extract_reply(text,nonce)
-                    if not answer:continue
+                    if answer:
+                        guarded_text(answer);owned.append(copied)
+                        return {'provider':provider,'answer':answer,'via':'desktop-copy','visual_model':VISION,'scrolls':scrolls}
+                # Fresh-chat fallback: copy the conversation text, then discard all
+                # content except a single exact task-marked answer. Never log it.
+                # The exact END marker, not vision, confirms the copied task block.
+                active(wid)
+                command(['xdotool','mousemove','--window',str(wid),str(round(w*.62)),str(round(h*.36)),'click','1'])
+                command(['xdotool','key','--clearmodifiers','ctrl+a'])
+                command(['xdotool','key','--clearmodifiers','ctrl+c']);time.sleep(.3)
+                copied=clipboard()
+                if len(copied)>1000000:raise ValueError('Copied conversation exceeded its safe bound.')
+                owned.append(copied)
+                answer=extract_reply(copied.decode('utf-8'),nonce)
+                if answer:
                     guarded_text(answer);owned.append(copied)
-                    return {'provider':provider,'answer':answer,'via':'desktop','visual_model':VISION,'scrolls':scrolls}
+                    return {'provider':provider,'answer':answer,'via':'desktop-marked-copy','visual_model':VISION,'scrolls':scrolls}
                 if not state.get('generating') and scrolls<24:
                     active(wid)
                     command(['xdotool','mousemove','--window',str(wid),str(round(w*.75)),str(round(h*.65)),'click','--repeat','5','--delay','80','5'])
