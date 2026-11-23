@@ -16,10 +16,12 @@ A native Ubuntu desktop workspace for local Ollama Qwen models, guarded file too
 Install Python 3, venv support, Ollama, and optionally Node.js for MCP. Then:
 
 ```sh
+git clone https://github.com/randomcheldad1/Qwen-studio.git
+cd Qwen-studio
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 ollama pull qwen3:1.7b
-./launch.sh
+sh ./launch.sh
 ```
 
 For scratch code execution install bubblewrap and ensure your user systemd session is available. For desktop leader control install xdotool, wmctrl, xprop, xclip and pyatspi, and use a Python environment with the system accessibility bindings. Existing signed-in ChatGPT/Claude desktop apps and an installed local vision model are required. Never put provider credentials into a model prompt.
